@@ -13,11 +13,7 @@
 // There's some conflict I don't understand,
 // the hack is to just define this one symbol manually.
 // See: https://code.google.com/p/webrtc/issues/detail?id=3996
-EXTERN_C const PROPERTYKEY PKEY_AudioEndpoint_GUID = { {
-  0x1da5d803, 0xd492, 0x4edd, {
-    0x8c, 0x23, 0xe0, 0xc0, 0xff, 0xee, 0x7f, 0x0e
-  } }, 4
-};
+EXTERN_C const PROPERTYKEY PKEY_AudioEndpoint_GUID = {{0x1da5d803, 0xd492, 0x4edd, {0x8c, 0x23, 0xe0, 0xc0, 0xff, 0xee, 0x7f, 0x0e}}, 4};
 
 using namespace v8;
 
@@ -26,17 +22,20 @@ const CLSID CLSID_MMDeviceEnumerator = __uuidof(MMDeviceEnumerator);
 const IID IID_IMMDeviceEnumerator = __uuidof(IMMDeviceEnumerator);
 
 #define EXIT_ON_ERROR(hresult) \
-  if (FAILED(hresult)) { goto _handleError; }
+  if (FAILED(hresult))         \
+  {                            \
+    goto _handleError;         \
+  }
 #endif
-
 
 #ifdef _WIN32
 boolean ExtractDataFromCollection(
-  Isolate *isolate,
-  IMMDeviceCollection *collection, UINT dataLength, char* kind,
-  IMMDevice *pDefaultDevice,
-  Local<Array> &results, UINT &accessor
-) {
+    Isolate *isolate,
+    IMMDeviceCollection *collection, UINT dataLength, char *kind,
+    IMMDevice *pDefaultDevice,
+    Local<Array> &results, UINT &accessor)
+{
+  Local<Context> context = isolate->GetCurrentContext();
   HRESULT hr;
   IMMDevice *pEndpoint = NULL;
   IPropertyStore *pProps = NULL;
@@ -48,16 +47,17 @@ boolean ExtractDataFromCollection(
     return false;
 
   // Cross collection and serialize each item into V8::Object pushed to results
-  for (UINT i = 0 ; i < dataLength ; i++) {
+  for (UINT i = 0; i < dataLength; i++)
+  {
     Local<Object> obj = Object::New(isolate);
     LPWSTR itemId = NULL;
 
     hr = collection->Item(i, &pEndpoint);
-      if (FAILED(hr))
-        return false;
+    if (FAILED(hr))
+      return false;
     hr = pEndpoint->GetId(&itemId);
-    obj->Set(String::NewFromUtf8(isolate, "default"), Boolean::New(isolate, wcscmp(itemId, deviceId) == 0));
-    obj->Set(String::NewFromUtf8(isolate, "kind"), String::NewFromUtf8(isolate, kind));
+    obj->Set(context, String::NewFromUtf8(isolate, "default").ToLocalChecked(), Boolean::New(isolate, wcscmp(itemId, deviceId) == 0));
+    obj->Set(context, String::NewFromUtf8(isolate, "kind").ToLocalChecked(), String::NewFromUtf8(isolate, kind).ToLocalChecked());
 
     hr = pEndpoint->OpenPropertyStore(STGM_READ, &pProps);
     if (FAILED(hr))
@@ -68,35 +68,36 @@ boolean ExtractDataFromCollection(
     hr = pProps->GetValue(PKEY_AudioEndpoint_GUID, &deviceGuid);
     if (FAILED(hr))
       return false;
-    obj->Set(String::NewFromUtf8(isolate, "guid"), String::NewFromUtf8(isolate, CW2A(deviceGuid.pwszVal)));
+    obj->Set(context, String::NewFromUtf8(isolate, "guid").ToLocalChecked(), String::NewFromUtf8(isolate, CW2A(deviceGuid.pwszVal)).ToLocalChecked());
 
     PROPVARIANT deviceName;
     PropVariantInit(&deviceName);
     hr = pProps->GetValue(PKEY_Device_FriendlyName, &deviceName);
     if (FAILED(hr))
       return false;
-    obj->Set(String::NewFromUtf8(isolate, "device"), String::NewFromUtf8(isolate, CW2A(deviceName.pwszVal)));
+    obj->Set(context, String::NewFromUtf8(isolate, "device").ToLocalChecked(), String::NewFromUtf8(isolate, CW2A(deviceName.pwszVal)).ToLocalChecked());
 
     PROPVARIANT friendlyName;
     PropVariantInit(&friendlyName);
     hr = pProps->GetValue(PKEY_DeviceInterface_FriendlyName, &friendlyName);
     if (FAILED(hr))
       return false;
-    obj->Set(String::NewFromUtf8(isolate, "friendly"), String::NewFromUtf8(isolate, CW2A(friendlyName.pwszVal)));
+    obj->Set(context, String::NewFromUtf8(isolate, "friendly").ToLocalChecked(), String::NewFromUtf8(isolate, CW2A(friendlyName.pwszVal)).ToLocalChecked());
 
-    results->Set(accessor, obj);
+    results->Set(context, accessor, obj);
     accessor++;
   }
   return true;
-
 }
 #endif
 
-void Method(const v8::FunctionCallbackInfo<Value>& args) {
+void Method(const v8::FunctionCallbackInfo<Value> &args)
+{
   Isolate *isolate = args.GetIsolate();
+  Local<Context> context = isolate->GetCurrentContext();
   HandleScope scope(isolate);
 
-  #ifdef _WIN32
+#ifdef _WIN32
   HRESULT hr;
   IMMDeviceEnumerator *pEnumerator = NULL;
   IMMDeviceCollection *pCaptureCollection = NULL;
@@ -105,8 +106,7 @@ void Method(const v8::FunctionCallbackInfo<Value>& args) {
   CoInitialize(nullptr);
   hr = CoCreateInstance(CLSID_MMDeviceEnumerator, NULL,
                         CLSCTX_ALL, IID_IMMDeviceEnumerator,
-                        (void**)&pEnumerator
-                        );
+                        (void **)&pEnumerator);
   EXIT_ON_ERROR(hr)
 
   HRESULT hrCapture;
@@ -116,18 +116,20 @@ void Method(const v8::FunctionCallbackInfo<Value>& args) {
 
   // Count output devices
   hrCapture = pEnumerator->EnumAudioEndpoints(eCapture, DEVICE_STATE_ACTIVE, &pCaptureCollection);
-  if (!FAILED(hrCapture)) {
+  if (!FAILED(hrCapture))
+  {
     hr = pCaptureCollection->GetCount(&countCapture);
     if (FAILED(hr))
-    countCapture = 0;
+      countCapture = 0;
   }
 
   // Count input devices
   hrRender = pEnumerator->EnumAudioEndpoints(eRender, DEVICE_STATE_ACTIVE, &pRenderCollection);
-  if (!FAILED(hrRender)) {
+  if (!FAILED(hrRender))
+  {
     hr = pRenderCollection->GetCount(&countRender);
     if (FAILED(hr))
-    countRender = 0;
+      countRender = 0;
   }
 
   UINT totalCount = countCapture + countRender;
@@ -145,8 +147,7 @@ void Method(const v8::FunctionCallbackInfo<Value>& args) {
     if (ExtractDataFromCollection(isolate,
                                   pCaptureCollection, countCapture, "audioinput",
                                   pDefaultCaptureDevice,
-                                  resultsArray, accessor
-                                  ) == false)
+                                  resultsArray, accessor) == false)
       goto _handleError;
 
   // Headsets
@@ -156,19 +157,16 @@ void Method(const v8::FunctionCallbackInfo<Value>& args) {
     if (ExtractDataFromCollection(isolate,
                                   pRenderCollection, countRender, "audiooutput",
                                   pDefaultRenderDevice,
-                                  resultsArray, accessor
-                                  ) == false)
+                                  resultsArray, accessor) == false)
       goto _handleError;
-
 
   args.GetReturnValue().Set(resultsArray);
   return;
 
-  #else
+#else
   goto _handleError;
 
-  #endif
-
+#endif
 
 // Error subfunction called from EXIT_ON_ERROR macro
 _handleError:
@@ -176,11 +174,12 @@ _handleError:
   return;
 }
 
-void init(Local<Object> exports) {
+void init(Local<Object> exports)
+{
   Isolate *isolate = Isolate::GetCurrent();
   Local<Context> context = isolate->GetCurrentContext();
 
-  exports->Set(String::NewFromUtf8(isolate, "getAudioDevices"),
+  exports->Set(context, String::NewFromUtf8(isolate, "getAudioDevices", NewStringType::kNormal).ToLocalChecked(),
                FunctionTemplate::New(isolate, Method)->GetFunction(context).ToLocalChecked());
 }
 
